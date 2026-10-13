@@ -1,0 +1,1245 @@
+openapi: 3.0.3
+
+info:
+  title: Emitta API
+  version: 1.0.0
+  description: |
+    API for asynchronous electronic fiscal document issuance in Ecuador.
+
+    A successful HTTP response means the invoice was accepted by Emitta
+    for fiscal processing. It does not mean that the SRI has authorized it.
+
+servers:
+  - url: http://localhost:18080
+    description: Local development
+
+tags:
+  - name: Documents
+    description: Tenant-protected document status and authorized artifacts
+  - name: Administration
+    description: Restricted platform and tenant administration
+  - name: Authentication
+    description: Machine-to-machine authentication
+
+  - name: Invoices
+    description: Electronic invoice issuance
+
+paths:
+
+  /api/v1/auth/token:
+
+    post:
+      tags:
+        - Authentication
+
+      operationId: issueAccessToken
+
+      summary: Issue a machine-to-machine access token
+
+      description: |
+        Authenticates an API client using its client identifier and secret.
+
+        Successful authentication returns a short-lived RS256 JWT.
+        This endpoint is intentionally public because it is the authentication
+        entry point.
+
+      security: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+
+      responses:
+
+        "200":
+          description: Access token issued
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+
+        "400":
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+        "401":
+          description: Invalid client credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+
+  /api/v1/invoices:
+
+    post:
+      tags:
+        - Invoices
+
+      operationId: createInvoice
+
+      summary: Create an electronic invoice
+
+      description: |
+        Creates an immutable invoice business snapshot and queues it
+        for asynchronous fiscal processing.
+
+        The authenticated JWT determines the tenant. A tenant identifier
+        must never be supplied by the request body.
+
+        Requires scope invoices:write and an active JWT tenant.
+        The Idempotency-Key header is mandatory. Processing is disabled by default;
+        an operator must enable the worker and outbox publisher explicitly.
+
+        A new invoice returns 202 Accepted.
+
+        An exact replay using the same Idempotency-Key returns 200 OK
+        and the existing invoice resource.
+
+      security:
+        - bearerAuth: []
+      x-required-scopes: [ invoices:write ]
+
+      parameters:
+
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: |
+            Tenant-scoped idempotency key. Reusing the same key with
+            different business content returns 409 Conflict.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          example: sale-2026-000001
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvoiceRequest"
+            examples:
+
+              standardInvoice:
+                summary: Standard 15 percent VAT invoice
+                value:
+                  pointOfIssueId: "4e10fa1e-b488-48ec-a79e-364eb434ef58"
+                  environment: TEST
+                  issuedAt: "2026-10-05T20:00:00Z"
+                  buyer:
+                    identificationType: "07"
+                    identification: "9999999999999"
+                    name: "CONSUMIDOR FINAL"
+                  items:
+                    - sku: "P001"
+                      description: "Producto de prueba"
+                      quantity: 2
+                      unitPrice: 10.00
+                      discount: 2.00
+                      taxes:
+                        - taxCode: "2"
+                          percentageCode: "4"
+                          rate: 15
+                  payments:
+                    - paymentMethod: "01"
+                      total: 20.70
+                  expectedTotal: 20.70
+
+      responses:
+
+        "200":
+          description: |
+            Idempotent replay. The invoice already existed and the
+            supplied business content matched the original request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateInvoiceResponse"
+
+        "202":
+          description: |
+            Invoice persisted and accepted for asynchronous fiscal processing.
+            This does not mean that the SRI has authorized the invoice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateInvoiceResponse"
+
+        "400":
+          description: Malformed request or transport-level validation failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+        "401":
+          description: Missing or invalid authentication
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+        "403":
+          description: Authenticated client is not allowed to perform the operation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+        "404":
+          description: Fiscal resource was not found in the authenticated tenant
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+        "409":
+          description: Idempotency key was reused with different request content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+        "422":
+          description: |
+            Request is structurally valid but violates a fiscal or
+            business invariant, such as expectedTotal mismatch.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+
+  /api/v1/tenants:
+    post:
+      tags: [ Administration ]
+      operationId: createTenant
+      summary: Create Tenant
+      description: Requires platform:admin. Scoped parent resources must belong to the active JWT tenant.
+        Administrative creation is not idempotent; duplicate fiscal codes return 409.
+      security:
+        - bearerAuth: []
+      x-required-scopes: [ platform:admin ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+      responses:
+        '201':
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Missing scope, invalid tenant context or inaccessible parent
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Parent no longer exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Fiscal resource already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+
+  /api/v1/tenants/{tenantId}/taxpayers:
+    post:
+      tags: [ Administration ]
+      operationId: createTaxpayer
+      summary: Create Taxpayer
+      description: Requires taxpayers:write. Scoped parent resources must belong to the active JWT tenant.
+        Administrative creation is not idempotent; duplicate fiscal codes return 409.
+      security:
+        - bearerAuth: []
+      x-required-scopes: [ taxpayers:write ]
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaxpayerRequest'
+      responses:
+        '201':
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxpayerResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Missing scope, invalid tenant context or inaccessible parent
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Parent no longer exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Fiscal resource already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+
+  /api/v1/taxpayers/{taxpayerId}/establishments:
+    post:
+      tags: [ Administration ]
+      operationId: createEstablishment
+      summary: Create Establishment
+      description: Requires establishments:write. Scoped parent resources must belong to the active JWT
+        tenant. Administrative creation is not idempotent; duplicate fiscal codes return 409.
+      security:
+        - bearerAuth: []
+      x-required-scopes: [ establishments:write ]
+      parameters:
+        - name: taxpayerId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEstablishmentRequest'
+      responses:
+        '201':
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstablishmentResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Missing scope, invalid tenant context or inaccessible parent
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Parent no longer exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Fiscal resource already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+
+  /api/v1/establishments/{establishmentId}/points-of-issue:
+    post:
+      tags: [ Administration ]
+      operationId: createPointOfIssue
+      summary: Create PointOfIssue
+      description: Requires points-of-issue:write. Scoped parent resources must belong to the active JWT
+        tenant. Administrative creation is not idempotent; duplicate fiscal codes return 409.
+      security:
+        - bearerAuth: []
+      x-required-scopes: [ points-of-issue:write ]
+      parameters:
+        - name: establishmentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePointOfIssueRequest'
+      responses:
+        '201':
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PointOfIssueResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Missing scope, invalid tenant context or inaccessible parent
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Parent no longer exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Fiscal resource already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+
+  /api/v1/documents/{documentId}:
+    get:
+      tags:
+        - Documents
+      operationId: getDocument
+      summary: Read a document in the authenticated tenant
+      security:
+        - bearerAuth: []
+      x-required-scopes:
+        - documents:read
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Document status; never includes internal object storage paths
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                  accessKey:
+                    type: string
+                    nullable: true
+                  sequential:
+                    type: integer
+                    format: int64
+                    nullable: true
+                  environment:
+                    type: string
+                    enum:
+                      - TEST
+                      - PRODUCTION
+                  issuedAt:
+                    type: string
+                    format: date-time
+                  authorizedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+        "400":
+          description: Resource unavailable or request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: Resource unavailable or request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
+          description: Resource unavailable or request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: Resource unavailable or request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /api/v1/documents/{documentId}/artifacts/{type}:
+    get:
+      tags:
+        - Documents
+      operationId: downloadDocumentArtifact
+      summary: Download an authorized XML or RIDE PDF
+      description: Requires confirmed AUTHORIZED state and enabled artifact loading. Checks tenant
+        ownership before accessing object storage and verifies persisted SHA-256. RIDE may not exist
+        yet. This GET never generates or submits a document.
+      security:
+        - bearerAuth: []
+      x-required-scopes:
+        - artifacts:read
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - authorized-xml
+              - ride-pdf
+      responses:
+        "200":
+          description: Private artifact attachment
+          headers:
+            ETag:
+              description: Quoted SHA-256
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/xml:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Resource unavailable or request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: Resource unavailable or request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
+          description: Resource unavailable or request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: Resource unavailable or request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
+          description: Document not authorized
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+  /api/v1/documents/{documentId}/ride-job:
+    get:
+      tags:
+        - Documents
+      operationId: readRideJob
+      summary: Read durable RIDE generation status
+      description: Requires artifacts:read and an active tenant owning the document. A missing job returns
+        404. PDF generation failures preserve fiscal authorization. This operation never submits
+        documents to the SRI.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Durable job status
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - state
+                  - attempts
+                  - nextAttemptAt
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - PENDING
+                      - RUNNING
+                      - COMPLETED
+                      - DEAD
+                      - BLOCKED
+                  attempts:
+                    type: integer
+                    minimum: 0
+                  nextAttemptAt:
+                    type: string
+                    format: date-time
+                  failureCategory:
+                    type: string
+                    nullable: true
+                    enum:
+                      - TRANSIENT
+                      - VALIDATION
+                      - INTEGRITY
+                      - EXTERNAL_UNKNOWN
+                      - PERMANENT
+        "401":
+          description: Authentication required
+        "403":
+          description: Scope missing or tenant inactive
+        "404":
+          description: Resource unavailable
+        "429":
+          $ref: "#/components/responses/TrafficLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+
+components:
+
+  securitySchemes:
+
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    CreateTenantRequest:
+      type: object
+      additionalProperties: false
+      required: [ name ]
+      properties:
+        name:
+          type: string
+          maxLength: 150
+          minLength: 1
+
+    TenantResponse:
+      type: object
+      required: [ id, name, status, createdAt, updatedAt ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTaxpayerRequest:
+      type: object
+      additionalProperties: false
+      required: [ ruc, legalName, mainAddress ]
+      properties:
+        ruc:
+          type: string
+          maxLength: 13
+          pattern: '^[0-9]{13}$'
+          minLength: 1
+        legalName:
+          type: string
+          maxLength: 300
+          minLength: 1
+        tradeName:
+          type: string
+          maxLength: 300
+        mainAddress:
+          type: string
+          maxLength: 300
+          minLength: 1
+
+    TaxpayerResponse:
+      type: object
+      required:
+        [
+          id,
+          tenantId,
+          ruc,
+          legalName,
+          tradeName,
+          mainAddress,
+          status,
+          testEnabled,
+          productionEnabled,
+          createdAt,
+          updatedAt
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        ruc:
+          type: string
+        legalName:
+          type: string
+        tradeName:
+          type: string
+          nullable: true
+        mainAddress:
+          type: string
+        status:
+          type: string
+        testEnabled:
+          type: boolean
+        productionEnabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateEstablishmentRequest:
+      type: object
+      additionalProperties: false
+      required: [ code ]
+      properties:
+        code:
+          type: string
+          maxLength: 3
+          pattern: '^[0-9]{3}$'
+          minLength: 1
+        name:
+          type: string
+          maxLength: 200
+        address:
+          type: string
+          maxLength: 500
+
+    EstablishmentResponse:
+      type: object
+      required: [ id, taxpayerId, code, name, address, status, createdAt, updatedAt ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        taxpayerId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatePointOfIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [ code ]
+      properties:
+        code:
+          type: string
+          maxLength: 3
+          pattern: '^[0-9]{3}$'
+          minLength: 1
+        name:
+          type: string
+          maxLength: 200
+
+    PointOfIssueResponse:
+      type: object
+      required: [ id, establishmentId, code, name, status, createdAt, updatedAt ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        establishmentId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+          nullable: true
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TokenRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - clientId
+        - clientSecret
+      properties:
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 100
+        clientSecret:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 500
+          writeOnly: true
+
+    TokenResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - accessToken
+        - tokenType
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: Short-lived RS256 JWT
+        tokenType:
+          type: string
+          enum:
+            - Bearer
+        expiresIn:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 900
+
+    CreateInvoiceRequest:
+      type: object
+      additionalProperties: false
+
+      required:
+        - pointOfIssueId
+        - environment
+        - issuedAt
+        - buyer
+        - items
+        - payments
+
+      properties:
+
+        pointOfIssueId:
+          type: string
+          format: uuid
+
+        environment:
+          type: string
+          enum:
+            - TEST
+            - PRODUCTION
+
+        issuedAt:
+          type: string
+          format: date-time
+
+        customerId:
+          type: string
+          format: uuid
+          nullable: true
+
+        buyer:
+          $ref: "#/components/schemas/InvoiceBuyer"
+
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/InvoiceItem"
+
+        payments:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/InvoicePayment"
+
+        expectedTotal:
+          type: number
+          format: double
+          minimum: 0
+          multipleOf: 0.01
+          nullable: true
+          description: |
+            Optional client-side verification value.
+            Emitta calculates the authoritative total.
+
+    InvoiceBuyer:
+      type: object
+      additionalProperties: false
+
+      required:
+        - identificationType
+        - identification
+        - name
+
+      properties:
+
+        identificationType:
+          type: string
+          pattern: "^[0-9]{2}$"
+
+        identification:
+          type: string
+          minLength: 1
+          maxLength: 30
+
+        name:
+          type: string
+          minLength: 1
+          maxLength: 300
+
+        email:
+          type: string
+          format: email
+          maxLength: 320
+          nullable: true
+
+        address:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    InvoiceItem:
+      type: object
+      additionalProperties: false
+
+      required:
+        - description
+        - quantity
+        - unitPrice
+        - discount
+        - taxes
+
+      properties:
+
+        sku:
+          type: string
+          maxLength: 25
+          nullable: true
+
+        description:
+          type: string
+          minLength: 1
+          maxLength: 300
+
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+
+        unitPrice:
+          type: number
+          minimum: 0
+
+        discount:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+
+        taxes:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/InvoiceTax"
+
+    InvoiceTax:
+      type: object
+      additionalProperties: false
+
+      required:
+        - taxCode
+        - percentageCode
+        - rate
+
+      properties:
+
+        taxCode:
+          type: string
+          pattern: "^[0-9]{1,4}$"
+
+        percentageCode:
+          type: string
+          pattern: "^[0-9]{1,4}$"
+
+        rate:
+          type: number
+          minimum: 0
+
+    InvoicePayment:
+      type: object
+      additionalProperties: false
+
+      required:
+        - paymentMethod
+        - total
+
+      properties:
+
+        paymentMethod:
+          type: string
+          pattern: "^[0-9]{2}$"
+
+        total:
+          type: number
+          exclusiveMinimum: 0
+          multipleOf: 0.01
+
+        term:
+          type: number
+          minimum: 0
+          nullable: true
+
+        unitTime:
+          type: string
+          minLength: 1
+          maxLength: 10
+          nullable: true
+
+    CreateInvoiceResponse:
+      type: object
+      additionalProperties: false
+
+      required:
+        - id
+        - status
+        - total
+        - created
+
+      properties:
+
+        id:
+          type: string
+          format: uuid
+
+        status:
+          $ref: "#/components/schemas/DocumentStatus"
+
+        total:
+          type: number
+          multipleOf: 0.01
+
+        created:
+          type: boolean
+          description: |
+            true when this request created the invoice.
+            false when this response is an idempotent replay.
+
+    DocumentStatus:
+      type: string
+      enum:
+        - RECEIVED
+        - QUEUED
+        - GENERATING
+        - SIGNED
+        - SUBMITTED
+        - RETRY_PENDING
+        - AUTHORIZED
+        - REJECTED
+        - FAILED
+
+    ProblemDetails:
+      type: object
+
+      properties:
+
+        type:
+          type: string
+          format: uri
+
+        title:
+          type: string
+
+        status:
+          type: integer
+          format: int32
+
+        detail:
+          type: string
+
+        instance:
+          type: string
+          format: uri
+
+        code:
+          type: string
+  responses:
+    TrafficLimited:
+      description: Configured traffic bucket exhausted. Independent of monthly commercial quotas.
+      headers:
+        Retry-After:
+          description: Minimum delay in seconds before a new request.
+          schema:
+            type: integer
+            minimum: 1
+        Cache-Control:
+          schema:
+            type: string
+          example: no-store
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: integer
+                example: 429
+              title:
+                type: string
+              type:
+                type: string
+    TemporarilyUnavailable:
+      description: Traffic protection or an operation dependency is temporarily unavailable. Existing
+        durable fiscal work continues independently of Redis.
+      headers:
+        Retry-After:
+          description: Minimum delay in seconds before a new request.
+          schema:
+            type: integer
+            minimum: 1
+        Cache-Control:
+          schema:
+            type: string
+          example: no-store
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: integer
+                example: 503
+              title:
+                type: string
+              type:
+                type: string

@@ -1,0 +1,65 @@
+---
+import '../styles/admin.css';
+const apiOrigin = 'https://api-emitta.nexorf.dev';
+---
+<!doctype html>
+<html lang="es">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex,nofollow"/><title>Administración TEST | Emitta</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://api-emitta.nexorf.dev; img-src 'self' data:; font-src 'self'; form-action 'none'; base-uri 'none'; object-src 'none'"/>
+<link rel="icon" href="/favicon.svg"/>
+</head>
+<body>
+<header class="admin-header"><a href="/">emitta <small>by NEXORF</small></a><a href="/docs/">Documentación de la API ↗</a></header>
+<main id="admin-app" data-api-origin={apiOrigin}>
+<div class="intro"><span class="badge">PANEL PRIVADO · AMBIENTE TEST</span><h1>Tus clientes, en un solo lugar.</h1>
+<p>Elige un negocio para administrar su conexión con Emitta.</p></div>
+<p id="notice" role="status" aria-live="polite"></p>
+<section id="login-section" class="card login-card"><span class="section-label">BIENVENIDO A EMITTA</span>
+<h2>Entra a tu panel</h2><p>Introduce tu acceso administrativo. Una vez dentro podrás ver tus organizaciones y gestionar sus aplicaciones.</p>
+<form id="login-form" method="post"><label>Identificador de acceso<input name="clientId" required autocomplete="off" maxlength="100"/></label>
+<label>Clave de acceso<input name="clientSecret" type="password" required autocomplete="off" maxlength="512"/></label>
+<button type="submit">Entrar al panel →</button></form>
+<p class="hint">Tu sesión es temporal. Al recargar la página tendrás que volver a entrar. ¿No tienes acceso? Debe habilitarlo el responsable de Emitta; no hay registro público.</p>
+</section>
+<section id="session-section" class="card" hidden><div class="row"><div><h2>Bienvenido</h2><p id="session-description"></p></div><button id="logout" class="secondary">Cerrar sesión</button></div>
+<p>Para un negocio que ya existe, pulsa <strong>Abrir cliente</strong>. No necesitas crearlo otra vez.</p><details><summary>Ayuda: qué entrego a mi cliente</summary><p>Entrega su identificador de acceso, su clave, la URL de la API y su punto de emisión. Tu acceso de dueño y el certificado se mantienen privados.</p><p>La preparación fiscal aún usa un acceso interno del negocio. Este panel no habilita emisiones automáticas ni permite comprobar su configuración fiscal desde el acceso de dueño.</p></details></section>
+<div id="platform-section" hidden>
+<section class="card client-directory"><div class="row"><h2>Clientes</h2><button id="refresh-tenants" class="secondary">Actualizar</button></div>
+<p>Selecciona el negocio que quieres gestionar.</p><p id="tenant-count" class="hint"></p><div id="tenant-list" class="resource-grid" aria-live="polite"></div>
+<div class="row"><button id="previous-tenants" class="secondary">Anterior</button><button id="next-tenants" class="secondary">Siguiente</button></div>
+<details id="new-organisation"><summary>＋ Crear cliente</summary><p>Escribe el nombre del negocio. Guardaremos su ficha y generaremos el identificador y la clave para su aplicación. Esto todavía no habilita la emisión fiscal.</p><form id="tenant-form" method="post"><label>Nombre del negocio<input name="name" required maxlength="150" placeholder="Por ejemplo: Mi negocio"/></label><button>Crear cliente y generar su clave →</button></form></details></section>
+<section id="organisation-workspace" class="card" hidden><span class="section-label">CLIENTE SELECCIONADO</span><h2 id="workspace-title">Acceso a la API</h2><p id="selected-tenant-name">Selecciona un negocio del listado.</p><input id="selected-tenant" type="hidden"/><p>Estas credenciales permiten a su software enviar facturas y descargar documentos. No sirven para entrar a tu panel. Si ya tiene una conexión activa, no necesitas crear otra.</p>
+<button id="refresh-clients" class="secondary">Actualizar conexiones</button><div id="client-list" class="resource-grid" aria-live="polite"></div>
+<details><summary>＋ Crear identificador y clave</summary><form id="client-form" method="post"><label>Nombre de la aplicación<input name="name" required maxlength="150" placeholder="Por ejemplo: Sistema de ventas"/></label>
+<details><summary>Opciones internas del operador</summary><label>Uso de este acceso<select name="profile"><option value="integration">Aplicación del cliente (recomendado)</option><option value="administration">Preparación fiscal interna</option></select></label><p class="hint">El acceso interno sirve para preparar datos fiscales y certificados. Nunca se entrega al cliente.</p></details>
+<button>Generar identificador y clave →</button></form></details>
+<details><summary>Herramientas internas de Emitta</summary><p>No entregues estas conexiones al cliente. Se usan para preparar sus datos fiscales y certificados.</p><div id="internal-client-list" class="resource-grid"></div></details><p class="hint">La clave se muestra únicamente al crearla. Si se pierde, genera una nueva con «Cambiar clave» y actualiza la aplicación.</p></section>
+</div>
+<section id="credentials-section" class="card" hidden><h2>Credenciales para entregar al cliente</h2><p>Se muestran una sola vez. Guárdalas en un gestor de secretos y entrégalas al responsable autorizado.</p>
+<div id="new-credentials" class="credential-box"></div><p class="hint">Entrega al integrador el identificador y la clave, junto con la URL de la API y el punto de emisión. No le entregues tu acceso de dueño.</p><button id="hide-credentials" class="secondary">Ocultar credenciales</button></section>
+<div id="tenant-section" hidden>
+<section class="card"><h2>Prepara los datos fiscales</h2><p>Completa los pasos en orden. Al crear el contribuyente y el establecimiento, sus identificadores se rellenan automáticamente en el siguiente paso. Si ya existen, puedes introducirlos sin volver a crearlos.</p></section>
+<section id="taxpayer-card" class="card"><h2>1. Contribuyente TEST</h2><p>Registra datos oficiales revisados. El backend mantiene PRODUCCIÓN deshabilitada.</p>
+<form id="taxpayer-form" method="post"><label>RUC<input name="ruc" required pattern="[0-9]{13}" maxlength="13"/></label>
+<label>Razón social oficial<input name="legalName" required maxlength="300"/></label>
+<label>Nombre comercial<input name="tradeName" maxlength="300"/></label>
+<label>Domicilio de matriz<input name="mainAddress" required maxlength="300"/></label><button>Registrar contribuyente</button></form></section>
+<section id="establishment-card" class="card"><h2>2. Establecimiento y punto</h2>
+<form id="establishment-form" method="post"><details><summary>Usar un registro existente</summary><p>Si lo creaste en el paso anterior, este dato ya está completado. Si ya existía, utiliza su identificador; no vuelvas a crearlo.</p><label>Identificador del contribuyente (se completa al crearlo)<input name="taxpayerId"/></label></details><label>Código de establecimiento<input name="code" required pattern="[0-9]{3}" maxlength="3" value="001"/></label><label>Nombre<input name="name" maxlength="200"/></label><label>Dirección comercial<input name="address" maxlength="500"/></label><button>Crear establecimiento</button></form>
+<form id="point-form" method="post"><details><summary>Usar un registro existente</summary><p>Si lo creaste en el paso anterior, este dato ya está completado. Si ya existía, utiliza su identificador; no vuelvas a crearlo.</p><label>Identificador del establecimiento (se completa al crearlo)<input name="establishmentId"/></label></details><label>Código de punto<input name="code" required pattern="[0-9]{3}" maxlength="3" value="001"/></label><label>Nombre<input name="name" maxlength="200"/></label><button>Crear punto de emisión</button></form></section>
+<section id="certificate-card" class="card"><h2>3. Certificado revisado</h2><p>El servidor valida identidad por RUC, clave privada, vigencia, CA y CRL antes de cifrar el certificado y su contraseña. No subas archivos sin autorización de su titular.</p>
+<form id="certificate-form" method="post"><details><summary>Usar un registro existente</summary><p>Si lo creaste en el paso anterior, este dato ya está completado. Si ya existía, utiliza su identificador; no vuelvas a crearlo.</p><label>Identificador del contribuyente (se completa al crearlo)<input name="taxpayerId"/></label></details><label>Certificado PKCS#12 · máximo 1 MiB<input name="certificate" type="file" accept=".p12,.pfx" required/></label>
+<label>Contraseña del certificado<input name="password" type="password" autocomplete="off" required maxlength="1024"/></label><label>Alias de clave, si corresponde<input name="alias" maxlength="255"/></label>
+<label>Evidencia de autorización · máximo 256 KiB<input name="authorizationEvidence" type="file" required/></label>
+<label class="check"><input name="authorizationReviewed" type="checkbox" required/>He revisado la identidad y autorización para este RUC.</label><button>Validar e importar</button></form>
+<label>Consultar certificados por UUID de contribuyente<input id="certificate-taxpayer"/></label><button id="list-certificates" class="secondary">Ver metadatos</button>
+</section>
+<section id="document-card" class="card"><h2>4. Consultar un documento</h2><p>Consulta un UUID existente. Aceptación, firma y autorización son estados distintos. El PDF sólo existe después de autorización verificada y generación RIDE.</p>
+<label>UUID del documento<input id="document-id"/></label><div class="row"><button id="read-document">Consultar estado</button><button id="download-xml" class="secondary">Descargar XML autorizado</button><button id="download-pdf" class="secondary">Descargar RIDE PDF</button></div>
+</section>
+</div>
+<section id="result-section" class="card" hidden><h2 id="result-title">Resultado</h2><div id="result-summary"></div><details><summary>Ver respuesta técnica</summary><pre id="operation-result"></pre></details><p>Guarda el identificador si necesitas consultar este registro. Si se interrumpe una creación y no sabes si se guardó, comprueba el resultado antes de repetirla.</p></section>
+</main><footer>NEXORF · Administración técnica de Emitta · TEST</footer>
+<script>import '../scripts/admin';</script>
+</body></html>

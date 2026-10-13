@@ -1,0 +1,4 @@
+@import url('../styles/tokens.css');
+:root { --sl-color-accent-low: #172554; --sl-color-accent: #2563eb; --sl-color-accent-high: #60a5fa; --sl-font: 'Inter', system-ui, sans-serif; }
+:root[data-theme='dark'] { --sl-color-bg: #121212; --sl-color-bg-nav: #18181b; --sl-color-bg-sidebar: #18181b; }
+.site-title { letter-spacing: -.035em; font-weight: 800; }
