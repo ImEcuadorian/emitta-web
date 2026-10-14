@@ -33,6 +33,8 @@ const context={exports:{},document:{getElementById:element,querySelectorAll:()=>
     else if(path.endsWith('/api-clients')&&options.method==='POST')response={clientId:'fixture',clientSecret:'fixture'};
     else if(path.endsWith('/taxpayers'))response={id:taxpayer};
     else if(path.endsWith('/establishments'))response={id:establishment};
+    else if(path.endsWith('/fiscal-configuration')&&options.method==='POST')response={taxpayerId:taxpayer,establishmentId:establishment,pointOfIssueId:'00000000-0000-4000-8000-000000000004',environment:'TEST'};
+    else if(path.endsWith('/fiscal-configuration'))response=[{taxpayerId:taxpayer,ruc:'1790000000001',legalName:'SYNTHETIC ISSUER',pointOfIssueId:'00000000-0000-4000-8000-000000000004',establishmentCode:'001',pointOfIssueCode:'001'}];
     return new Response(JSON.stringify(response),{headers:{'Content-Type':'application/json'}});
   }};
 vm.runInNewContext(ts.transpileModule(readFileSync('src/scripts/admin.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);
@@ -47,6 +49,11 @@ await submit('client-form',{name:'Synthetic integration',profile:'integration'})
 assert.deepEqual(calls.at(-2)!.body.scopes,['invoices:write','documents:read','artifacts:read']);
 await submit('client-form',{name:'Synthetic admin',profile:'administration'});
 assert.deepEqual(calls.at(-2)!.body.scopes,['taxpayers:write','establishments:write','points-of-issue:write','certificates:write','certificates:read']);
+await submit('client-form',{name:'Synthetic self managed',profile:'self-managed'});
+assert.deepEqual(calls.at(-2)!.body.scopes,['invoices:write','documents:read','artifacts:read','taxpayers:write','establishments:write','points-of-issue:write','certificates:write','certificates:read']);
+await submit('fiscal-setup-form',{ruc:'1790000000001',legalName:'SYNTHETIC ISSUER',mainAddress:'Synthetic address',establishmentCode:'001',pointOfIssueCode:'001'});
+assert.ok(calls.some(call=>call.path===`/api/v1/tenants/${tenant}/fiscal-configuration`&&call.body.taxpayer));
+assert.equal(element('certificate-form').querySelector('[name="taxpayerId"]').value,taxpayer);
 const before=calls.length;await submit('client-form',{name:'Invalid profile',profile:'platform:admin'});assert.equal(calls.length,before);
 await submit('taxpayer-form',{ruc:'fixture'});
 assert.equal(element('establishment-form').querySelector('[name="taxpayerId"]').value,taxpayer);

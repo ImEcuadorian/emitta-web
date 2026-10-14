@@ -19,6 +19,7 @@ Emitta conecta tu sistema con la facturación electrónica de Ecuador mediante u
 | --- | --- |
 | Hacer mi primera integración | [Primeros pasos](/docs/quickstart/) |
 | Obtener y renovar un token | [Autenticación](/docs/authentication/) |
+| Registrar mi RUC, punto y certificado | [Emisor y certificado](/docs/fiscal-setup/) |
 | Entender todos los datos de una factura | [Crear facturas](/docs/invoices/) |
 | Consultar el estado y descargar archivos | [Documentos y descargas](/docs/documents/) |
 | Revisar modelos y respuestas exactas | [Referencia API](/docs/api-reference/) |

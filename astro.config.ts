@@ -12,6 +12,7 @@ export default defineConfig({
    { label: 'Introducción', slug: 'docs' },
    { label: 'Primeros pasos', slug: 'docs/quickstart' },
    { label: 'Autenticación', slug: 'docs/authentication' },
+   { label: 'Emisor y certificado', slug: 'docs/fiscal-setup' },
    { label: 'Facturas', slug: 'docs/invoices' },
    { label: 'Documentos y descargas', slug: 'docs/documents' },
   ] }, { label: 'Volver a Emitta', link: '/' }],

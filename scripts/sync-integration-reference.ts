@@ -5,6 +5,7 @@ const specification = parse(readFileSync('specifications/emitta-v1.yaml', 'utf8'
 const allowed = [
   '/api/v1/auth/token', '/api/v1/invoices', '/api/v1/documents/{documentId}',
   '/api/v1/documents/{documentId}/artifacts/{type}', '/api/v1/documents/{documentId}/ride-job',
+  '/api/v1/fiscal-configuration', '/api/v1/taxpayers/{taxpayerId}/certificates',
 ];
 for (const path of allowed) if (!specification.paths[path]) throw new Error(`Missing backend path: ${path}`);
 specification.paths = Object.fromEntries(allowed.map(path => [path, specification.paths[path]]));

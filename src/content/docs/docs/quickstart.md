@@ -11,11 +11,13 @@ Solicita al responsable de Emitta estos cuatro datos:
 | URL de la API | Dirección a la que enviará solicitudes tu servidor. |
 | `clientId` | Identificador de tu aplicación. |
 | `clientSecret` | Contraseña de tu aplicación. Consérvala en un gestor de secretos. |
-| `pointOfIssueId` | Identificador del punto de emisión que ya preparó el responsable. |
+| `pointOfIssueId` | Identificador del punto preparado por Emitta o por tu aplicación. |
 
 **Tu cliente API es tu aplicación; el comprador de una factura es otra cosa.** No necesitas enviar un tenant ni crear una cuenta por cada comprador.
 
 Los siguientes comandos usan un dominio y credenciales ficticios. Sustituye la URL por la del entorno concedido. Ejecuta la integración desde tu servidor, nunca exponiendo el secreto en una página web.
+
+Si prepararás tu propio RUC, punto y certificado, sigue primero [Emisor y certificado](/docs/fiscal-setup/). Solicita gestión fiscal propia; el alta de tu cuenta sigue a cargo de Emitta.
 
 ## 1. Obtén un token de acceso
 
