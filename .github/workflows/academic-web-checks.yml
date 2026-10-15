@@ -1,0 +1,39 @@
+name: Academic Web Verification
+
+on:
+  push:
+    branches:
+      - academic/ups-ra1-ra4-20261015
+  pull_request:
+    branches:
+      - codex/ride-consolidation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  astro-build:
+    name: Typecheck, build and links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Astro check
+        run: npm run check
+      - name: Build documentation and site
+        run: npm run build
+      - name: Verify internal links
+        run: npm run check:links
+      - name: Run isolated admin UI tests
+        run: npm run test:admin
+
+# No deployment, no SRI calls, no browser secrets or credentials.
