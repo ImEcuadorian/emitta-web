@@ -2,7 +2,7 @@
 title: Documentos y descargas
 description: Consulta estados y descarga XML autorizado y RIDE con permisos por tenant.
 ---
-Estas operaciones están publicadas en staging y requieren tu token de acceso. Sólo devuelven recursos existentes del tenant. El staging nuevo no contiene comprobantes ni artefactos del piloto; firma, RIDE y transmisión SRI permanecen apagados.
+Estas operaciones están publicadas en staging y requieren tu token de acceso. Sólo devuelven recursos existentes del tenant. Según el informe operativo, staging conserva un comprobante TEST autorizado y archivos comprobados con SHA-256; el piloto privado permanece separado. La firma, el RIDE y la transmisión **automática** al SRI continúan apagados.
 
 ## Consultar estado
 `GET /api/v1/documents/{documentId}` requiere el acceso de consulta de tu aplicación. Devuelve UUID, estado, clave de acceso, secuencial, ambiente, fecha de emisión y fecha de autorización cuando existe. Un documento ausente o ajeno responde `404` sin exponer su existencia.
