@@ -4,6 +4,8 @@ description: Consulta estados y descarga XML autorizado y RIDE con permisos por 
 ---
 Estas operaciones están publicadas en staging y requieren tu token de acceso. Sólo devuelven recursos existentes del tenant. La disponibilidad del procesamiento depende de la configuración del ambiente; aceptar una factura no significa que esté autorizada.
 
+En esta demostración, el procesamiento automático está apagado: las nuevas solicitudes pueden permanecer en `QUEUED`. Ya existe una prueba manual autorizada en SRI TEST.
+
 ## ¿De dónde sale documentId?
 
 Al crear una factura con `POST /api/v1/invoices`, guarda el campo `id` de la respuesta en tu aplicación. Ese UUID es el `documentId` de las siguientes consultas. No lo entrega manualmente el administrador y no es el UUID del punto de emisión.
