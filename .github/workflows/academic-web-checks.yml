@@ -3,9 +3,12 @@ name: Academic Web Verification
 on:
   push:
     branches:
+      - main
+      - codex/university-final-20261015
       - academic/ups-ra1-ra4-20261015
   pull_request:
     branches:
+      - main
       - codex/ride-consolidation
   workflow_dispatch:
 

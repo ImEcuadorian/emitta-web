@@ -5,7 +5,7 @@
 - Sitio STAGING: https://emitta.nexorf.dev
 - API STAGING: https://api-emitta.nexorf.dev
 - Backend: https://github.com/ImEcuadorian/emitta
-- Entregables UPS RA1–RA4: https://github.com/ImEcuadorian/emitta/tree/academic/ups-ra1-ra4-20261015/docs/academic
+- Entregables UPS RA1–RA4: https://github.com/ImEcuadorian/emitta/tree/main/docs/academic
 
 ## Tecnologías
 
