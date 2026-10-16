@@ -37,7 +37,7 @@ Dev: http://localhost:4321; salida de build: dist/. No ejecutar solicitudes fisc
 
 La aplicación cliente no es lo mismo que una persona que recibe una factura. Un HTTP 202 significa persistencia, no autorización SRI. No hay producción fiscal, autoservicio comercial, planes cobrados, webhooks ni envío automático de correo.
 
-**Versionado:** rama académica creada a partir de codex/ride-consolidation publicada hasta el 14-10-2026. Antes de enviar la entrega del 29-10, sincronizar cualquier trabajo local y verificar que lo ejecutado en staging coincide con un commit de GitHub. No subir credenciales, P12, tokens ni comprobantes privados.
+**Versionado:** la versión universitaria integra los cambios locales del panel y las guías con el historial académico. La entrega identifica commits y CI de ambas ramas main. No subir credenciales, P12, tokens ni comprobantes privados.
 
 ## Despliegue
 
