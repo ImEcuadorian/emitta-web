@@ -28,7 +28,7 @@ const context={exports:{},document:{getElementById:element,querySelectorAll:()=>
     const path=new URL(url).pathname;const body=options.body?JSON.parse(options.body):{};calls.push({path,body});
     if(failClientCreation && path.endsWith('/api-clients') && options.method==='POST')throw new Error('Synthetic disconnection');
     let response:unknown=[];
-    if(path.endsWith('/auth/token'))response={accessToken:'example.'+Buffer.from(JSON.stringify({tenant_id:tenant,scope:['platform:admin'],exp:Date.now()/1000+600})).toString('base64url')+'.example'};
+    if((path.endsWith('/auth/token') || path.endsWith('/operator/token')))response={accessToken:'example.'+Buffer.from(JSON.stringify({tenant_id:tenant,scope:['platform:admin'],exp:Date.now()/1000+600})).toString('base64url')+'.example'};
     else if(path==='/api/v1/tenants'&&options.method==='POST')response={id:tenant,name:'Synthetic organisation'};
     else if(path.endsWith('/api-clients')&&options.method==='POST')response={clientId:'fixture',clientSecret:'fixture'};
     else if(path.endsWith('/taxpayers'))response={id:taxpayer};
@@ -43,7 +43,7 @@ await submit('login-form',{clientId:'fixture',clientSecret:'fixture'});
 await submit('tenant-form',{name:'Synthetic organisation'});
 assert.equal(element('selected-tenant').value,tenant);
 assert.equal(element('selected-tenant-name').textContent,'Synthetic organisation');
-assert.deepEqual(calls.find(call=>call.path.endsWith('/api-clients')&&call.body.scopes)!.body.scopes,['invoices:write','documents:read','artifacts:read']);
+assert.deepEqual(calls.find(call=>call.path.endsWith('/api-clients')&&call.body.scopes)!.body.scopes,['invoices:write','documents:read','artifacts:read','taxpayers:write','establishments:write','points-of-issue:write','certificates:write','certificates:read']);
 assert.ok(element('new-credentials').textContent.includes('fixture'));
 await submit('client-form',{name:'Synthetic integration',profile:'integration'});
 assert.deepEqual(calls.at(-2)!.body.scopes,['invoices:write','documents:read','artifacts:read']);
@@ -53,13 +53,8 @@ await submit('client-form',{name:'Synthetic self managed',profile:'self-managed'
 assert.deepEqual(calls.at(-2)!.body.scopes,['invoices:write','documents:read','artifacts:read','taxpayers:write','establishments:write','points-of-issue:write','certificates:write','certificates:read']);
 await submit('fiscal-setup-form',{ruc:'1790000000001',legalName:'SYNTHETIC ISSUER',mainAddress:'Synthetic address',establishmentCode:'001',pointOfIssueCode:'001'});
 assert.ok(calls.some(call=>call.path===`/api/v1/tenants/${tenant}/fiscal-configuration`&&call.body.taxpayer));
-assert.equal(element('certificate-form').querySelector('[name="taxpayerId"]').value,taxpayer);
+
 const before=calls.length;await submit('client-form',{name:'Invalid profile',profile:'platform:admin'});assert.equal(calls.length,before);
-await submit('taxpayer-form',{ruc:'fixture'});
-assert.equal(element('establishment-form').querySelector('[name="taxpayerId"]').value,taxpayer);
-assert.equal(element('certificate-form').querySelector('[name="taxpayerId"]').value,taxpayer);
-await submit('establishment-form',{taxpayerId:taxpayer,code:'001'});
-assert.equal(element('point-form').querySelector('[name="establishmentId"]').value,establishment);
 failClientCreation=true;
 await submit('tenant-form',{name:'Synthetic partial creation'});
 assert.ok(element('notice').textContent.includes('El negocio se guardó'));
@@ -68,3 +63,20 @@ await submit('tenant-form',{name:'Synthetic partial creation'});
 assert.equal(calls.length,partialCalls,'No automatic duplicate creation after uncertain client response');
 await element('logout').listeners.get('click')!({});assert.equal(element('selected-tenant').value,'');assert.equal(element('platform-section').hidden,true);
 console.log('Administrative flow verified with synthetic responses: selection, two least-privilege profiles, invalid profile blocked, fiscal identifier propagation and logout cleanup. No network calls.');
+
+await submit('personal-login-form',{email:'owner@example.invalid',password:'synthetic-password'});
+assert.equal(calls.at(-2)?.path,'/api/v1/operator/token');
+assert.deepEqual(element('personal-login-form').fields,{});
+await submit('personal-setup-form',{email:'owner@example.invalid',password:'synthetic-password',confirmPassword:'synthetic-password'});
+assert.equal(calls.at(-1)?.path,'/api/v1/operator/personal-access');
+assert.equal(calls.at(-1)?.body.confirmPassword,undefined);
+assert.deepEqual(element('personal-setup-form').fields,{});
+
+assert.ok(!calls.some(call=>call.path.includes('/documents')||call.path.includes('/certificates')),'Owner panel must never fetch customer invoices or upload certificates');
+await element('nav-account').listeners.get('click')!({currentTarget:element('nav-account')});
+assert.equal(element('account-view').hidden,false);assert.equal(element('client-directory').hidden,true);
+await element('nav-clients').listeners.get('click')!({currentTarget:element('nav-clients')});
+assert.equal(element('account-view').hidden,true);assert.equal(element('client-directory').hidden,false);
+const markup=readFileSync('src/pages/admin.astro','utf8');
+assert.ok(!markup.includes('type="file"'));assert.ok(!markup.includes('download-pdf'));
+console.log('Owner views separated; no certificate upload or invoice download controls.');

@@ -32,6 +32,90 @@ tags:
     description: Protected certificate import and metadata
 
 paths:
+  /api/v1/operator/overview:
+    get:
+      tags: [Administration]
+      summary: Operational metadata for the platform owner
+      description: Requires platform:admin. Current-instance metrics and latest 20 administrative actions; no fiscal payloads. HTTP counters reset on restart. Missing gauges are null; infrastructure sample timestamp indicates freshness.
+      operationId: operatorOverview
+      responses:
+        '200':
+          description: Operational snapshot with no-store caching
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  observedAt: {type: string, format: date-time}
+                  scope: {type: string, enum: [CURRENT_INSTANCE]}
+                  httpRequestsSinceStartup: {type: integer, format: int64}
+                  httpErrorsSinceStartup: {type: integer, format: int64}
+                  gauges: {type: object, additionalProperties: true}
+                  recentActivity:
+                    type: array
+                    maxItems: 20
+                    items:
+                      type: object
+                      properties:
+                        action: {type: string}
+                        at: {type: string, format: date-time}
+        '401': {description: Authentication required}
+        '403': {description: Platform owner required}
+
+
+  /api/v1/operator/token:
+    post:
+      tags: [Administration]
+      summary: Private owner sign-in with email identifier and password
+      description: No public registration. Five failed attempts lock the account for fifteen minutes. Uses the same revocable owner session as technical access.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {type: string, format: email, maxLength: 254}
+                password: {type: string, format: password, maxLength: 72, writeOnly: true}
+      responses:
+        '200':
+          description: Bearer token; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: {type: string}
+                  tokenType: {type: string, enum: [Bearer]}
+                  expiresIn: {type: integer}
+        '401': {description: Invalid credentials, locked or inactive account}
+        '429': {description: Request rate exceeded}
+        '503': {description: Traffic protection unavailable}
+  /api/v1/operator/personal-access:
+    post:
+      tags: [Administration]
+      summary: Configure or recover the authenticated owner's personal sign-in
+      description: Requires platform:admin and an active privileged client. Binds only the current actor. Password minimum 12 characters and maximum 72 UTF-8 bytes. No email delivery or verification is claimed.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {type: string, format: email, maxLength: 254}
+                password: {type: string, format: password, minLength: 12, maxLength: 72, writeOnly: true}
+      responses:
+        '204': {description: Saved; password never returned}
+        '400': {description: Invalid input}
+        '401': {description: Authentication required}
+        '403': {description: Platform owner required}
+        '409': {description: Identifier unavailable}
 
   /api/v1/auth/token:
 
@@ -1348,7 +1432,6 @@ components:
           type: string
           enum:
             - TEST
-            - PRODUCTION
 
         issuedAt:
           type: string

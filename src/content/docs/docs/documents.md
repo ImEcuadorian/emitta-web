@@ -2,7 +2,17 @@
 title: Documentos y descargas
 description: Consulta estados y descarga XML autorizado y RIDE con permisos por tenant.
 ---
-Estas operaciones están publicadas en staging y requieren tu token de acceso. Sólo devuelven recursos existentes del tenant. El staging nuevo no contiene comprobantes ni artefactos del piloto; firma, RIDE y transmisión SRI permanecen apagados.
+Estas operaciones están publicadas en staging y requieren tu token de acceso. Sólo devuelven recursos existentes del tenant. La disponibilidad del procesamiento depende de la configuración del ambiente; aceptar una factura no significa que esté autorizada.
+
+## ¿De dónde sale documentId?
+
+Al crear una factura con `POST /api/v1/invoices`, guarda el campo `id` de la respuesta en tu aplicación. Ese UUID es el `documentId` de las siguientes consultas. No lo entrega manualmente el administrador y no es el UUID del punto de emisión.
+
+1. Consulta `GET /api/v1/fiscal-configuration` y elige el `pointOfIssueId` por sus códigos de establecimiento y punto (por ejemplo, `001-002`).
+2. Crea la factura con ese punto y una `Idempotency-Key` única para esa operación. Guarda el `id` recibido.
+3. Consulta su estado usando ese `id`. Sólo cuando esté autorizado y el artefacto disponible, descarga su XML y PDF con el mismo token de tu aplicación.
+
+Conserva la misma clave de idempotencia y el mismo cuerpo si necesitas recuperar el resultado de una creación interrumpida. No crees otra operación con una clave nueva.
 
 ## Consultar estado
 `GET /api/v1/documents/{documentId}` requiere el acceso de consulta de tu aplicación. Devuelve UUID, estado, clave de acceso, secuencial, ambiente, fecha de emisión y fecha de autorización cuando existe. Un documento ausente o ajeno responde `404` sin exponer su existencia.

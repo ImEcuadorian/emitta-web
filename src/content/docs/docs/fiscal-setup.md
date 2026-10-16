@@ -3,7 +3,7 @@ title: Configura tu emisor y certificado
 description: Registra tu RUC y punto de emisión mediante la API y carga tu certificado por HTTPS.
 ---
 
-Si Emitta ya te entregó un `pointOfIssueId` y preparó tu certificado, puedes ir directamente a [crear facturas](/docs/invoices/). Si prepararás tus propios datos, solicita **gestión fiscal propia** para tu aplicación. No necesitas acceso al panel del dueño ni sus credenciales.
+El responsable de Emitta te entrega un `clientId` y un `clientSecret` con permisos de integración completa. Tu aplicación configura el negocio, importa el certificado y consulta sus documentos mediante la API. No necesitas entrar al panel del dueño ni pedirle identificadores manualmente.
 
 ## 1. Registra tu emisor y punto
 
@@ -40,7 +40,11 @@ La respuesta HTTP `200` contiene:
 
 Conserva `pointOfIssueId` para facturar y `taxpayerId` para importar el certificado. Una repetición con los mismos datos identifica los registros existentes; no crea otro punto ni consume un secuencial. Si los datos enviados difieren o están inactivos, responde `409` y no los modifica. Una operación fallida revierte las creaciones de esa solicitud.
 
-También puedes recuperar tu configuración con `GET /api/v1/fiscal-configuration?limit=25&offset=0`.
+También puedes recuperar tu configuración con `GET /api/v1/fiscal-configuration?limit=25&offset=0`. Cada fila relaciona `ruc`, `establishmentCode`, `pointOfIssueCode` y `pointOfIssueId`: selecciona el UUID por los códigos de tu local y caja. Recorre las páginas con `offset` si tienes más puntos.
+
+Para añadir el punto `001-002`, repite el alta con los mismos datos oficiales y establecimiento `001`, cambiando `pointOfIssue.code` a `002`. Para otro local utiliza su código y dirección correspondientes. La API devuelve los UUID; no debes inventarlos.
+
+El secuencial de la factura lo asigna el backend. Este endpoint no permite importar un secuencial inicial ni reiniciar una numeración existente. Si estás migrando un punto con facturas previas, acuerda primero su continuidad con el operador; no asumas que comienza desde uno.
 
 ## 2. Importa tu certificado por HTTPS
 

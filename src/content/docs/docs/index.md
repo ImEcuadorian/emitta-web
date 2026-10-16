@@ -1,33 +1,52 @@
 ---
-title: Integra Emitta en tu aplicación
-description: Una guía para autenticar tu aplicación, crear facturas y consultar sus resultados.
+title: Cómo integrar Emitta
+description: El recorrido completo de tu aplicación, desde las credenciales hasta el XML y PDF.
 ---
-Emitta conecta tu sistema con la facturación electrónica de Ecuador mediante una API REST. Esta documentación está dirigida a quienes integran la API en su software.
+Emitta es una API para conectar tu sistema de ventas con la facturación electrónica de Ecuador. **Tu desarrollador integra los endpoints una vez; la persona que vende utiliza tu sistema, no necesita conocer URLs ni UUID.**
 
-## Empieza por aquí
+## Qué recibes y qué construyes
 
-1. **Recibe tu acceso:** el responsable de Emitta prepara tu cuenta y te entrega las credenciales y el identificador de tu punto de emisión. No necesitas crear tenants ni configurar certificados desde tu integración.
-2. **Obtén un token:** usa tus credenciales para identificar tu aplicación.
-3. **Crea una factura:** envía el comprador, los productos, impuestos y pagos.
-4. **Consulta el resultado:** guarda el identificador recibido y consulta su estado. Descarga XML y PDF cuando estén disponibles.
+Recibes de Emitta un `clientId` y un `clientSecret`, entregados de forma privada. Con ellos, el servidor de tu aplicación obtiene un token y realiza las operaciones de esta guía. No necesitas entrar al panel del dueño ni crear tenants.
 
-[Seguir la guía paso a paso →](/docs/quickstart/)
+Tu aplicación debe ofrecer dos recorridos:
 
-## Qué guía necesitas
+- **Configuración del negocio:** registrar RUC, direcciones, locales y puntos; cargar el certificado y consultar su vigencia. Se hace al comenzar y cuando cambie el certificado o se añadan puntos.
+- **Facturación diaria:** enviar una venta, consultar su estado y ofrecer la descarga del XML y PDF disponibles.
 
-| Quiero… | Ir a… |
-| --- | --- |
-| Hacer mi primera integración | [Primeros pasos](/docs/quickstart/) |
-| Obtener y renovar un token | [Autenticación](/docs/authentication/) |
-| Registrar mi RUC, punto y certificado | [Emisor y certificado](/docs/fiscal-setup/) |
-| Entender todos los datos de una factura | [Crear facturas](/docs/invoices/) |
-| Consultar el estado y descargar archivos | [Documentos y descargas](/docs/documents/) |
-| Revisar modelos y respuestas exactas | [Referencia API](/docs/api-reference/) |
+## Endpoints en el orden de integración
 
-## Entorno disponible
+Base del ambiente de pruebas: `https://api-emitta.nexorf.dev`. Añade a esa base las rutas de esta tabla.
 
-La API de pruebas está en `https://api-emitta.nexorf.dev`. El acceso se entrega de forma privada; no hay autorregistro público.
+| Cuándo | Operación | Para qué sirve |
+| --- | --- | --- |
+| Al iniciar y al vencer el token | `POST /api/v1/auth/token` | Obtener acceso con tu identificador y secreto. |
+| Configuración inicial | `POST /api/v1/fiscal-configuration` | Registrar emisor, establecimiento y punto. Devuelve sus UUID. |
+| Al elegir local/caja | `GET /api/v1/fiscal-configuration` | Relacionar códigos como `001-002` con su `pointOfIssueId`. |
+| Al cargar un certificado | `POST /api/v1/taxpayers/{taxpayerId}/certificates` | Validar e importar el archivo y su contraseña por HTTPS. |
+| Para revisar vigencia | `GET /api/v1/taxpayers/{taxpayerId}/certificates` | Consultar metadatos, sin recuperar el archivo ni la contraseña. |
+| Por cada venta | `POST /api/v1/invoices` | Guardar una factura y obtener su `id`. |
+| Después de crearla | `GET /api/v1/documents/{documentId}` | Consultar firma y autorización. |
+| Con autorización y archivo disponible | `GET /api/v1/documents/{documentId}/artifacts/{type}` | Descargar `authorized-xml` o `ride-pdf`. |
+| Si el PDF sigue pendiente | `GET /api/v1/documents/{documentId}/ride-job` | Consultar el trabajo de generación, cuando existe. |
 
-**En este staging, la firma y el procesamiento fiscal automático están apagados.** Crear una factura permite comprobar su aceptación y persistencia, pero no produce por sí solo una factura autorizada por el SRI. Una respuesta `202` significa «solicitud guardada», no «factura autorizada».
+**No necesitas implementar endpoints administrativos.** Los permisos de tu aplicación se asignan al entregarte el acceso y sólo permiten trabajar con tus propios recursos.
 
-Todavía no hay webhooks ni envío de facturas por correo. Consulta el estado con la API. Las tareas de alta y certificados corresponden al responsable de Emitta y están separadas de esta guía.
+[Empezar la integración paso a paso →](/docs/quickstart/)
+
+## Qué hace Emitta
+
+La API valida y guarda las solicitudes, asigna identificadores y secuenciales y controla duplicados. Cuando el procesamiento está habilitado, el backend genera y firma el XML, comunica con el SRI y genera el RIDE tras autorización verificada. Tu aplicación consulta el resultado; no llama directamente al SRI.
+
+## Alcance actual de TEST
+
+El procesamiento fiscal automático está apagado en staging. Puedes comprobar configuración, autenticación y aceptación de solicitudes, pero una factura nueva puede permanecer en `QUEUED`. **HTTP `202` significa guardada; no significa autorizada ni garantiza un PDF inmediato.** Coordina una prueba fiscal controlada con el responsable antes de esperar el recorrido completo.
+
+No hay webhooks, envío de documentos por correo ni autorregistro. El PDF es la representación RIDE; la firma digital está en el XML.
+
+## Consultar un tema
+
+- [Autenticación y permisos](/docs/authentication/)
+- [Configurar negocio y certificado](/docs/fiscal-setup/)
+- [Campos y ejemplo de factura](/docs/invoices/)
+- [Estados, XML y PDF](/docs/documents/)
+- [Referencia exacta de la API](/docs/api-reference/)

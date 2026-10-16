@@ -4,7 +4,7 @@ type Session = { token: string; tenant: string; scopes: string[]; expires: numbe
 let session: Session | null = null;
 let tenantOffset = 0;
 let newBusinessOutcomeUncertain = false;
-let invoiceOffset=0;
+
 let fiscalRows: Json[]=[];
 const owner=()=>session?.scopes.includes('platform:admin')??false;
 let expiryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -49,19 +49,19 @@ function selectedOrganisation(id:string,name:string) {
   element('selected-tenant-name').textContent=name;
   element('workspace-title').textContent=name;
   element('organisation-workspace').hidden=false;
-  invoiceOffset=0;fiscalRows=[];
-  for(const id of ['fiscal-overview','certificate-overview','invoices-overview','fiscal-taxpayer-choice'])element(id).textContent='';
-  element('customer-tools').hidden=false;
+  fiscalRows=[];
+  for(const id of ['fiscal-overview','certificate-overview','fiscal-taxpayer-choice'])element(id).textContent='';
+  showView('detail');showDetail('access');
 }
 function logout() {
   session = null; clearTimeout(expiryTimer);
-  for (const id of ['session-section','platform-section','tenant-section','credentials-section','result-section','organisation-workspace','customer-tools']) element(id).hidden = true;
+  for (const id of ['operations-view','account-view','session-section','platform-section','credentials-section','result-section','organisation-workspace','customer-tools']) element(id).hidden = true;
   for (const id of ['new-credentials','operation-result','tenant-list','client-list','internal-client-list','session-description','selected-tenant-name','result-summary','tenant-count']) element(id).textContent = '';
   document.querySelectorAll<HTMLFormElement>('form').forEach(form => form.reset());
   element('login-section').hidden = false;
   element<HTMLInputElement>('selected-tenant').value=''; tenantOffset=0;
-  fiscalRows=[];invoiceOffset=0;
-  for(const id of ['fiscal-overview','certificate-overview','invoices-overview','fiscal-taxpayer-choice'])element(id).textContent='';
+  fiscalRows=[];
+  for(const id of ['fiscal-overview','certificate-overview','fiscal-taxpayer-choice'])element(id).textContent='';
   notice('Sesión cerrada.');
 }
 async function request(path: string, options: RequestInit = {}, authenticated = true): Promise<Response> {
@@ -76,7 +76,7 @@ async function request(path: string, options: RequestInit = {}, authenticated = 
   if (!response.ok) {
     if (response.status === 401 && authenticated) logout();
     const retry = response.headers.get('Retry-After');
-    const messages: Record<number,string> = {400:'Revisa los datos del formulario.',401:authenticated?'Tu sesión venció. Vuelve a entrar.':'El identificador o la clave no son correctos.',403:'Este acceso no permite realizar la operación. Utiliza el acceso administrativo correspondiente.',404:'No se encontró el registro o archivo solicitado.',409:'Ya existe un registro o la operación no es válida en su estado actual. Comprueba lo existente antes de repetir.',422:'No se pudo validar la información. Revisa los datos o el certificado.',429:'Demasiadas solicitudes. Espera antes de continuar.',503:'El servicio no está disponible temporalmente. No vuelvas a crear un registro sin comprobar si se guardó.'};
+    const messages: Record<number,string> = {400:'Revisa los datos del formulario.',401:authenticated?'Tu sesión venció. Vuelve a entrar.':'No se pudo iniciar sesión. Revisa tus credenciales; si hubo varios intentos fallidos, espera 15 minutos.',403:'Este acceso no permite realizar la operación. Utiliza el acceso administrativo correspondiente.',404:'No se encontró el registro o archivo solicitado.',409:'Ya existe un registro o la operación no es válida en su estado actual. Comprueba lo existente antes de repetir.',422:'No se pudo validar la información. Revisa los datos o el certificado.',429:'Demasiadas solicitudes. Espera antes de continuar.',503:'El servicio no está disponible temporalmente. No vuelvas a crear un registro sin comprobar si se guardó.'};
     throw new Error((messages[response.status]??'No se pudo completar la operación.')+(retry?' Espera '+retry+' segundos.':'')+` (HTTP ${response.status})`);
   }
   return response;
@@ -102,23 +102,34 @@ function onClick(id: string, operation: () => Promise<void>) {
   });
 }
 const fields = (form: HTMLFormElement): Json => Object.fromEntries(new FormData(form).entries());
-bindForm('login-form', async form => {
+async function login(form: HTMLFormElement, path: string) {
   const body = fields(form);
   try {
-    const response = await post('/api/v1/auth/token',body,false);
+    const response = await post(path,body,false);
     const claims = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(response.accessToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0))));
     // Claims only drive display; backend validates signature, active client, tenant and scopes on every operation.
     session={token:response.accessToken,tenant:claims.tenant_id,scopes:Array.isArray(claims.scope)?claims.scope:String(claims.scope??'').split(' '),expires:claims.exp*1000};
     const platform=session.scopes.includes('platform:admin');
     element('login-section').hidden=true; element('session-section').hidden=false;
-    element('platform-section').hidden=!platform; element('tenant-section').hidden=platform;
-    for(const [card,scope] of [['taxpayer-card','taxpayers:write'],['establishment-card','establishments:write'],['certificate-card','certificates:write'],['document-card','documents:read']])element(card).hidden=!session.scopes.includes(scope);
+    element('platform-section').hidden=!platform;
+    if(!platform){logout();throw new Error('Este panel es exclusivo del dueño de Emitta. Usa tus credenciales de cliente desde la API.');}
     element('session-description').textContent=platform ? 'Responsable de Emitta · Gestión de organizaciones y accesos' : 'Administración de la organización · Datos fiscales y certificados';
     expiryTimer=setTimeout(logout,Math.max(0,session.expires-Date.now()));
     if(platform) await listTenants();
-    else if(session.scopes.includes('certificates:read')){selectedOrganisation(session.tenant,'Mi cuenta');await loadFiscalOverview();}
+    showView('clients');
     form.dataset.successMessage=platform?'Elige un cliente para continuar.':'Sesión iniciada.';
-  } finally { form.reset(); body.clientSecret=null; }
+  } finally { form.reset(); body.clientSecret=null; body.password=null; }
+}
+bindForm('login-form', form=>login(form,'/api/v1/auth/token'));
+bindForm('personal-login-form', form=>login(form,'/api/v1/operator/token'));
+bindForm('personal-setup-form', async form=>{
+  const body=fields(form);
+  try {
+    if(body.password!==body.confirmPassword)throw new Error('Las contraseñas no coinciden.');
+    delete body.confirmPassword;
+    await post('/api/v1/operator/personal-access',body);
+    form.dataset.successMessage='Tu entrada personal está configurada. Puedes cerrar sesión y entrar con tu correo y contraseña.';
+  } finally {form.reset();body.password=null;}
 });
 function row(container: HTMLElement, label: string, action?: {label:string;run:()=>Promise<void>}) {
   const div=document.createElement('div');div.className='resource-row';
@@ -131,7 +142,9 @@ async function listTenants() {
   const list=await response.json() as Array<{id:string;name:string;status:string}>;
   const container=element('tenant-list');container.textContent='';
   element('tenant-count').textContent=list.length?`${list.length} negocios en esta página`:'Todavía no hay negocios. Usa «Añadir un negocio» para comenzar.';
-  list.forEach(t=>{const item=row(container,`${t.name} · ${readableStatus[t.status]??t.status}`,{label:'Abrir cliente →',run:async()=>{selectedOrganisation(t.id,t.name);await listClients();await loadFiscalOverview();await loadInvoices();notice('Estás gestionando: '+t.name);element('organisation-workspace').scrollIntoView?.({behavior:'smooth',block:'start'});}});item.setAttribute('aria-current',String(value('selected-tenant')===t.id));});
+  const visible=list.filter(t=>t.id!==session?.tenant && (element<HTMLInputElement>('show-inactive').checked || t.status==='ACTIVE'));
+  element('tenant-count').textContent=`${visible.length} clientes visibles en esta página`;
+  visible.forEach(t=>{const item=row(container,`${t.name} · ${readableStatus[t.status]??t.status}`,{label:'Abrir cliente →',run:async()=>{selectedOrganisation(t.id,t.name);await listClients();await loadFiscalOverview();notice('Estás gestionando: '+t.name);element('organisation-workspace').scrollIntoView?.({behavior:'smooth',block:'start'});}});item.setAttribute('aria-current',String(value('selected-tenant')===t.id));});
   element<HTMLButtonElement>('previous-tenants').disabled=tenantOffset===0;
   element<HTMLButtonElement>('next-tenants').disabled=list.length<25;
 }
@@ -146,7 +159,8 @@ async function listClients() {
   list.forEach(c=>{
     const isInternal=!c.scopes.includes('invoices:write');
     const div=row(isInternal?internal:container,`${c.name} · ${readableStatus[c.status]??c.status}`);
-    if(!isInternal){row(div,'Identificador para su aplicación: '+c.clientId);row(div,c.scopes.includes('certificates:write')?'Puede preparar sus datos y certificado por la API':'Facturación y descarga; configuración a cargo de Emitta');}
+    if(!isInternal){row(div,'Identificador para su aplicación: '+c.clientId);row(div,c.scopes.includes('certificates:write')?'Puede preparar sus datos y certificado por la API':'Sólo facturación y descarga; crea un acceso completo si necesita gestionar su negocio');}
+    row(div,'Permisos: '+c.scopes.join(', '));
     if(c.status==='ACTIVE') for(const action of ['rotate-secret','revoke']) row(div,'',{label:action==='revoke'?'Desactivar acceso':'Cambiar clave',run:async()=>{
       if(!confirm(action==='revoke'?'¿Desactivar este acceso? La aplicación dejará de poder usar la API.':'¿Generar una clave nueva? Tendrás que actualizarla en la aplicación del cliente. Los tokens actuales conservan su vigencia hasta expirar.'))throw new Error('Operación cancelada.');
       const body=await post(`/api/v1/tenants/${tenant}/api-clients/${uuid(c.id)}/${action}`,{});
@@ -162,7 +176,7 @@ bindForm('tenant-form',async form=>{
     const data=fields(form);
     created=await post('/api/v1/tenants',{name:data.name});
     selectedOrganisation(uuid(created!.id),created!.name);
-    const access=await post(`/api/v1/tenants/${uuid(created!.id)}/api-clients`,{name:'Aplicación del cliente',scopes:data.fiscalManagement==='customer'?accessProfiles['self-managed']:accessProfiles.integration});
+    const access=await post(`/api/v1/tenants/${uuid(created!.id)}/api-clients`,{name:'Aplicación del cliente',scopes:accessProfiles['self-managed']});
     credentials(access);newBusinessOutcomeUncertain=false;form.reset();
     form.dataset.successMessage='Cliente creado. Guarda el identificador y la clave que aparecen abajo. La configuración fiscal se prepara después.';
   } catch(error) {
@@ -182,31 +196,6 @@ bindForm('client-form',async form=>{
   const scopes=accessProfiles[String(data.get('profile'))];if(!scopes)throw new Error('Selecciona un tipo de acceso válido.');
   credentials(await post(`/api/v1/tenants/${tenant}/api-clients`,{name:data.get('name'),scopes}));await listClients();form.dataset.successMessage='Acceso creado. Guarda las credenciales que aparecen debajo; la clave no se puede recuperar después.';
 });
-bindForm('taxpayer-form',async form=>{
-  const created=await post(`/api/v1/tenants/${uuid(session!.tenant)}/taxpayers`,fields(form));result(created);form.dataset.successMessage='Contribuyente registrado. Continúa con el establecimiento; su identificador ya está completado.';
-  for(const id of ['establishment-form','certificate-form'])element<HTMLFormElement>(id).querySelector<HTMLInputElement>('[name="taxpayerId"]')!.value=created.id;
-  element<HTMLInputElement>('certificate-taxpayer').value=created.id;
-});
-bindForm('establishment-form',async form=>{const data=fields(form);const id=uuid(String(data.taxpayerId));delete data.taxpayerId;
-  const created=await post(`/api/v1/taxpayers/${id}/establishments`,data);result(created);form.dataset.successMessage='Establecimiento creado. Continúa con el punto de emisión.';
-  element<HTMLFormElement>('point-form').querySelector<HTMLInputElement>('[name="establishmentId"]')!.value=created.id;
-});
-bindForm('point-form',async form=>{const data=fields(form);const id=uuid(String(data.establishmentId));delete data.establishmentId;result(await post(`/api/v1/establishments/${id}/points-of-issue`,data));});
-bindForm('certificate-form',async form=>{
-  const data=new FormData(form);
-  try {
-  const id=uuid(String(data.get('taxpayerId')));data.delete('taxpayerId');data.set('authorizationReviewed','true');
-  const certificate=data.get('certificate') as File;const evidence=data.get('authorizationEvidence') as File;
-  if(!certificate.size || certificate.size>1048576 || !evidence.size || evidence.size>262144)throw new Error('Tamaño de certificado o evidencia inválido.');
-  if(!confirm('¿Enviar este certificado y su contraseña por HTTPS para validarlos e importarlos en este contribuyente TEST?'))throw new Error('Operación cancelada.');
-  const response=await request(`/api/v1/taxpayers/${id}/certificates`,{method:'POST',body:data});result(await response.json());if(value('selected-tenant'))await loadFiscalOverview();}
-  finally {form.reset();data.delete('password');data.delete('certificate');data.delete('authorizationEvidence');
-    if(value('fiscal-taxpayer-choice'))form.querySelector<HTMLInputElement>('[name="taxpayerId"]')!.value=value('fiscal-taxpayer-choice');}
-});
-onClick('list-certificates',async()=>{result(await (await request(`/api/v1/taxpayers/${uuid(value('certificate-taxpayer'))}/certificates`)).json());});
-onClick('read-document',async()=>{result(await (await request(`/api/v1/documents/${uuid(value('document-id'))}`)).json());});
-async function download(type:string,extension:string){const id=uuid(value('document-id'));const response=await request(`/api/v1/documents/${id}/artifacts/${type}`);const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download=`${id}.${extension}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-onClick('download-xml',()=>download('authorized-xml','xml'));onClick('download-pdf',()=>download('ride-pdf','pdf'));
 onClick('refresh-tenants',async()=>{await listTenants();newBusinessOutcomeUncertain=false;notice('Listado actualizado. Comprueba si el negocio ya existe antes de crear uno nuevo.');});onClick('refresh-clients',listClients);
 onClick('previous-tenants',async()=>{tenantOffset=Math.max(0,tenantOffset-25);await listTenants();});onClick('next-tenants',async()=>{tenantOffset+=25;await listTenants();});
 element('logout').addEventListener('click',logout);
@@ -223,47 +212,20 @@ async function loadFiscalOverview(){
   const taxpayers=new Map<string,Json>();
   for(const entry of rows){taxpayers.set(String(entry.taxpayerId),entry);
     row(container,`${entry.legalName} · RUC ${entry.ruc} · ${entry.establishmentCode??'Sin establecimiento'}-${entry.pointOfIssueCode??'Sin punto'}`);
-    if(entry.pointOfIssueId)row(container,'pointOfIssueId para su aplicación: '+entry.pointOfIssueId);
+    if(entry.pointOfIssueId)row(container,'pointOfIssueId: '+entry.pointOfIssueId,{label:'Copiar UUID',run:async()=>{await navigator.clipboard.writeText(String(entry.pointOfIssueId));notice('UUID del punto copiado.');}});
   }
   for(const [id,entry] of taxpayers){const option=document.createElement('option');option.value=id;option.textContent=String(entry.legalName)+' · '+entry.ruc;choice.append(option);}
   if(!rows.length)row(container,'Todavía no hay datos fiscales. Regístralos con el formulario o permite que el cliente los prepare por la API.');
   if(rows.length===100)row(container,'Se muestran las primeras 100 configuraciones. Hay más registros disponibles mediante la consulta paginada de la API.');
   choice.value=taxpayers.keys().next().value??'';
-  const canWrite=owner() || ['taxpayers:write','establishments:write','points-of-issue:write'].every(scope=>session?.scopes.includes(scope));
-  element('fiscal-setup-form').hidden=!canWrite;
-  element('certificate-slot').append(element('certificate-card'));
-  element('taxpayer-card').hidden=true;element('establishment-card').hidden=true;
-  element('certificate-card').hidden=!(owner() || session?.scopes.includes('certificates:write'));
-  element('invoices-overview-card').hidden=!owner();
   selectFiscalTaxpayer();
 }
 function selectFiscalTaxpayer(){
   const id=value('fiscal-taxpayer-choice');const entry=fiscalRows.find(row=>row.taxpayerId===id);
-  const form=element<HTMLFormElement>('certificate-form');form.reset();
-  form.querySelector<HTMLInputElement>('[name="taxpayerId"]')!.value=id;
-  form.querySelector<HTMLElement>('details')!.hidden=true;
-  element<HTMLInputElement>('certificate-taxpayer').value=id;element('certificate-taxpayer').hidden=true;element('list-certificates').hidden=true;
-  element('certificate-taxpayer').closest?.('label')?.setAttribute('hidden','');
   const summary=element('certificate-overview');summary.textContent='';
   row(summary,entry?.certificateId?`Certificado ${readableStatus[String(entry.certificateStatus)]??entry.certificateStatus} · Vigencia hasta ${entry.certificateValidUntil??'No disponible'}`:'Certificado pendiente de importación.');
-  form.querySelector<HTMLButtonElement>('button')!.disabled=!id;
+
 }
-async function loadInvoices(){
-  if(!owner())return;const tenant=uuid(value('selected-tenant'));
-  const response=await request(`/api/v1/tenants/${tenant}/documents?limit=25&offset=${invoiceOffset}`);
-  const list=await response.json() as Json[];if(value('selected-tenant')!==tenant)return;
-  const container=element('invoices-overview');container.textContent='';
-  if(!list.length)row(container,'Todavía no hay documentos en esta página.');
-  for(const invoice of list){const number=String(invoice.sequential??'').padStart(9,'0');
-    const div=row(container,`${invoice.establishmentCode}-${invoice.pointOfIssueCode}-${number} · ${readableStatus[String(invoice.status)]??invoice.status} · ${invoice.environment}`);
-    for(const [kind,label,available,extension] of [['ride-pdf','Descargar PDF',invoice.pdfAvailable,'pdf'],['authorized-xml','Descargar XML firmado',invoice.xmlAvailable,'xml']] as const)
-      if(invoice.status==='AUTHORIZED'&&available)row(div,'',{label,run:()=>downloadFrom(`/api/v1/tenants/${tenant}/documents/${uuid(String(invoice.id))}/artifacts/${kind}`,String(invoice.id),extension)});
-    if(invoice.status!=='AUTHORIZED')row(div,'Aún no tiene autorización fiscal; no hay descarga autorizada disponible.');
-    else if(!invoice.pdfAvailable)row(div,'Autorizado. PDF pendiente de generación.');
-  }
-  element<HTMLButtonElement>('previous-invoices').disabled=invoiceOffset===0;element<HTMLButtonElement>('next-invoices').disabled=list.length<25;
-}
-async function downloadFrom(path:string,id:string,extension:string){const response=await request(path);const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download=`${id}.${extension}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 bindForm('fiscal-setup-form',async form=>{
   const tenant=value('selected-tenant');
   const data=fields(form);const optional=(key:string)=>String(data[key]??'').trim()||null;
@@ -273,6 +235,41 @@ bindForm('fiscal-setup-form',async form=>{
   result(configured);await loadFiscalOverview();form.dataset.successMessage='Configuración guardada. Utiliza el pointOfIssueId devuelto para facturar. El certificado se importa por separado.';
 });
 element('fiscal-taxpayer-choice').addEventListener('change',selectFiscalTaxpayer);
-onClick('refresh-fiscal',loadFiscalOverview);onClick('refresh-invoices',loadInvoices);
-onClick('previous-invoices',async()=>{invoiceOffset=Math.max(0,invoiceOffset-25);await loadInvoices();});
-onClick('next-invoices',async()=>{invoiceOffset+=25;await loadInvoices();});
+onClick('refresh-fiscal',loadFiscalOverview);
+
+type View = 'clients'|'detail'|'account'|'operations';
+function showView(view:View){
+  for(const [id,visible] of [['client-directory',view==='clients'],['organisation-workspace',view==='detail'],['customer-tools',view==='detail'],['account-view',view==='account'],['operations-view',view==='operations']] as const)element(id).hidden=!visible;
+  for(const id of ['clients','account','operations'])element('nav-'+id).setAttribute('aria-current',String(view===id || (id==='clients'&&view==='detail')));
+  element('credentials-section').hidden=true;element('new-credentials').textContent='';
+  element('result-section').hidden=true;
+}
+for(const view of ['clients','account','operations'] as const)onClick('nav-'+view,async()=>{showView(view);if(view==='operations')await loadOperations();});
+onClick('back-clients',async()=>showView('clients'));
+
+function showDetail(tab:'access'|'business'){
+ element('access-detail').hidden=tab!=='access';element('customer-tools').hidden=tab!=='business';
+ element('tab-access').setAttribute('aria-current',String(tab==='access'));element('tab-business').setAttribute('aria-current',String(tab==='business'));
+}
+onClick('tab-access',async()=>showDetail('access'));
+onClick('tab-business',async()=>showDetail('business'));
+
+async function loadOperations(){
+ const metrics=element('operations-metrics');metrics.textContent='Cargando medidas…';element('operations-activity').textContent='';
+ try {
+  const data=await (await request('/api/v1/operator/overview')).json();
+  metrics.textContent='';element('operations-time').textContent='Consulta: '+data.observedAt;
+  row(metrics,'Solicitudes HTTP desde el inicio: '+data.httpRequestsSinceStartup);
+  row(metrics,'Respuestas HTTP 4xx/5xx desde el inicio: '+data.httpErrorsSinceStartup);
+  const labels:Record<string,string>={'emitta.outbox.pending':'Eventos Outbox pendientes','emitta.ride.pending':'PDF pendientes','emitta.processing.oldest.pending.seconds':'Trabajo pendiente más antiguo (segundos)','emitta.database.available':'PostgreSQL disponible (1 sí / 0 no)','emitta.redis.probe.available':'Redis disponible (1 sí / 0 no)','hikaricp.connections.active':'Conexiones PostgreSQL ocupadas','hikaricp.connections.pending':'Solicitudes esperando conexión'};
+  for(const [key,label] of Object.entries(labels))row(metrics,label+': '+(data.gauges[key]??'Sin medición'));
+  const sampled=data.gauges['emitta.observability.sample.timestamp.seconds'];
+  row(metrics,sampled>0?'Última muestra de infraestructura: '+new Date(sampled*1000).toISOString():'Infraestructura: todavía no hay muestra; no interpretes los ceros como disponibilidad.');
+  const activity=element('operations-activity');
+  for(const entry of data.recentActivity)row(activity,entry.at+' · '+entry.action);
+  if(!data.recentActivity.length)row(activity,'Sin actividad administrativa registrada.');
+ }catch(error){metrics.textContent='No se pudo obtener la supervisión. No se muestran valores estimados.';throw error;}
+}
+onClick('refresh-operations',loadOperations);
+
+element('show-inactive').addEventListener('change',()=>{listTenants().catch(error=>notice(error.message,'error'));});

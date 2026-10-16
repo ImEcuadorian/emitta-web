@@ -27,12 +27,12 @@ Cuando el token expire, solicita otro con las mismas credenciales. Si recibes `4
 
 ## Qué acceso recibes
 
-El perfil de integración permite crear facturas, consultar sus resultados y descargar los archivos disponibles. No necesitas elegir permisos técnicos para empezar ni enviar el identificador de la organización: Emitta lo obtiene del token y comprueba que los recursos le pertenecen.
+El perfil completo permite configurar el negocio y su certificado, crear facturas, consultar sus resultados y descargar los archivos disponibles. También existen accesos restringidos a facturación; si recibes 403 en configuración, pide que revisen el perfil asignado. No necesitas elegir permisos técnicos para empezar ni enviar el identificador de la organización: Emitta lo obtiene del token y comprueba que los recursos le pertenecen.
 
 <details>
 <summary>Detalle técnico para integraciones avanzadas</summary>
 
-Los permisos se llaman scopes: `invoices:write`, `documents:read` y `artifacts:read`. Los asigna el responsable. El token es un JWT firmado con RS256; la API verifica firma, emisor, audiencia, vigencia y acceso activo. La rotación del secreto no invalida los tokens ya emitidos; revocar la aplicación bloquea su validación posterior.
+Los permisos se llaman scopes. Facturación utiliza `invoices:write`, `documents:read` y `artifacts:read`. La configuración completa añade `taxpayers:write`, `establishments:write`, `points-of-issue:write`, `certificates:write` y `certificates:read`. Los asigna el responsable. El token es un JWT firmado con RS256; la API verifica firma, emisor, audiencia, vigencia y acceso activo. La rotación del secreto no invalida los tokens ya emitidos; revocar la aplicación bloquea su validación posterior.
 
 </details>
 
